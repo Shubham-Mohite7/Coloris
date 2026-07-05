@@ -3,17 +3,28 @@ import {
   Camera,
   CameraOff,
   Check,
+  ChevronDown,
   Copy,
   Download,
   Focus,
   ImageDown,
   Loader2,
+  Menu,
   MousePointer2,
+  Save,
+  Trash2,
 } from 'lucide-react';
 
 const TARGET_PALETTE_SIZE = 8;
 const ANALYSIS_INTERVAL = 1000;
 const DEDUPE_DISTANCE = 42;
+
+const RESOLUTION_PRESETS = {
+  '480p': { width: 640, height: 480 },
+  '720p': { width: 1280, height: 720 },
+  '1080p': { width: 1920, height: 1080 },
+  '4K': { width: 3840, height: 2160 },
+};
 
 const defaultPalette = [
   { hex: '#f8f5ef', rgb: '248, 245, 239', count: 120, source: 'ambient' },
@@ -177,6 +188,13 @@ function App() {
   const [message, setMessage] = useState('Ready to discover color');
   const [sampleMarker, setSampleMarker] = useState(null);
   const [capturedAt, setCapturedAt] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [savedPalettes, setSavedPalettes] = useState([]);
+  const [showSavePopup, setShowSavePopup] = useState(false);
+  const [selectedPalette, setSelectedPalette] = useState(null);
+  const [resolution, setResolution] = useState('720p');
+  const [isCameraControlsOpen, setIsCameraControlsOpen] = useState(false);
+  const [actualResolution, setActualResolution] = useState(null);
 
   const isCameraActive = cameraState === 'active';
   const isStarting = cameraState === 'starting';
@@ -223,11 +241,12 @@ function App() {
     setMessage('Waiting for camera permission...');
 
     try {
+      const preset = RESOLUTION_PRESETS[resolution];
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: preset.width },
+          height: { ideal: preset.height },
         },
         audio: false,
       });
@@ -237,8 +256,12 @@ function App() {
       video.srcObject = stream;
       await video.play();
 
+      const actualWidth = video.videoWidth;
+      const actualHeight = video.videoHeight;
+      setActualResolution(`${actualWidth}x${actualHeight}`);
+
       setCameraState('active');
-      setMessage('Sampling the live frame every second');
+      setMessage(`Camera active at ${actualWidth}x${actualHeight}`);
       analyzeFrame();
       window.clearInterval(intervalRef.current);
       intervalRef.current = window.setInterval(analyzeFrame, ANALYSIS_INTERVAL);
@@ -315,9 +338,42 @@ function App() {
     window.setTimeout(() => setSampleMarker(null), 1200);
   };
 
+  const savePalette = () => {
+    const newPalette = {
+      id: Date.now(),
+      name: `Palette ${savedPalettes.length + 1}`,
+      colors: palette,
+      createdAt: new Date().toISOString(),
+    };
+    const updatedPalettes = [newPalette, ...savedPalettes];
+    setSavedPalettes(updatedPalettes);
+    localStorage.setItem('coloris-saved-palettes', JSON.stringify(updatedPalettes));
+    setMessage('Palette saved!');
+    setShowSavePopup(true);
+    window.setTimeout(() => setShowSavePopup(false), 2500);
+  };
+
+  const deletePalette = (id) => {
+    const updatedPalettes = savedPalettes.filter((p) => p.id !== id);
+    setSavedPalettes(updatedPalettes);
+    localStorage.setItem('coloris-saved-palettes', JSON.stringify(updatedPalettes));
+    setMessage('Palette deleted');
+  };
+
   useEffect(() => {
     if (!streamRef.current) {
       setMessage('Ready to discover color');
+    }
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('coloris-saved-palettes');
+    if (saved) {
+      try {
+        setSavedPalettes(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load saved palettes', e);
+      }
     }
   }, []);
 
@@ -329,11 +385,11 @@ function App() {
   }, []);
 
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-[#050509] text-white">
+    <main className="relative min-h-dvh overflow-hidden bg-black text-white">
       <video
         ref={videoRef}
         className={`absolute inset-0 h-full w-full object-cover transition duration-700 ${
-          isCameraActive ? 'scale-100 opacity-100' : 'scale-100 opacity-20 blur-sm'
+          isCameraActive ? 'scale-100 opacity-100' : 'opacity-0'
         }`}
         playsInline
         muted
@@ -342,11 +398,9 @@ function App() {
       />
 
       {!isCameraActive && (
-        <div className="absolute inset-0 bg-[#0a0a0a]" />
+        <div className="absolute inset-0 bg-black" />
       )}
 
-      <div className="video-vignette absolute inset-0" />
-      <div className="noise absolute inset-0" />
       <canvas ref={canvasRef} className="hidden" />
 
       {sampleMarker && (
@@ -363,8 +417,215 @@ function App() {
 
       <section className="pointer-events-none relative z-10 min-h-dvh px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
         <header className="pointer-events-auto mb-6 flex justify-center">
-          <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-4xl">Coloris</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-4xl">Colōris</h1>
         </header>
+
+        <button
+          className="pointer-events-auto fixed left-3 top-3 z-30 glass-button inline-flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/18 active:scale-[0.98] sm:left-6 sm:top-6 sm:h-12 sm:w-12"
+          type="button"
+          aria-label="Menu"
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        >
+          <Menu size={20} className="sm:w-[22px]" />
+        </button>
+
+        {isSidebarOpen && (
+          <>
+            <div
+              className="pointer-events-auto fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+            <aside className="pointer-events-auto fixed left-0 top-0 z-50 h-full w-72 transform border-r border-white/10 bg-black/80 backdrop-blur-3xl shadow-2xl transition-transform duration-300 ease-out sm:w-80">
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between border-b border-white/10 p-4 sm:p-6">
+                  <h2 className="text-xl font-bold text-white">Menu</h2>
+                  <button
+                    className="glass-button inline-flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/18 hover:text-white"
+                    type="button"
+                    onClick={() => setIsSidebarOpen(false)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+
+                <nav className="flex-1 overflow-y-auto p-4 sm:p-6">
+                  <div className="space-y-1">
+                    <button
+                      className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18"
+                      onClick={() => setIsCameraControlsOpen(!isCameraControlsOpen)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Camera size={18} />
+                          <span className="font-medium">Camera Controls</span>
+                        </div>
+                        <ChevronDown size={16} className={`transition-transform ${isCameraControlsOpen ? 'rotate-180' : ''}`} />
+                      </div>
+                    </button>
+                    {isCameraControlsOpen && (
+                      <div className="px-4 py-2">
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">Resolution</label>
+                        <div className="relative">
+                          <select
+                            value={resolution}
+                            onChange={(e) => {
+                              setResolution(e.target.value);
+                              if (isCameraActive) {
+                                stopCamera();
+                                setTimeout(() => startCamera(), 100);
+                              }
+                            }}
+                            className="glass-button w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-white/30 focus:bg-white/15"
+                          >
+                            <option value="480p">480p (640x480)</option>
+                            <option value="720p">720p (1280x720)</option>
+                            <option value="1080p">1080p (1920x1080)</option>
+                            <option value="4K">4K (3840x2160)</option>
+                          </select>
+                          <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                        </div>
+                        {actualResolution && (
+                          <p className="mt-2 text-xs text-white/50">
+                            Actual: <span className="font-medium text-white/70">{actualResolution}</span>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
+                      <div className="flex items-center gap-3">
+                        <Focus size={18} />
+                        <span className="font-medium">Palette Settings</span>
+                      </div>
+                    </button>
+                    <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
+                      <div className="flex items-center gap-3">
+                        <Download size={18} />
+                        <span className="font-medium">Export Options</span>
+                      </div>
+                    </button>
+                    <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
+                      <div className="flex items-center gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                        <span className="font-medium">Preferences</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="mt-8 border-t border-white/10 pt-6">
+                    <p className="mb-4 px-4 text-xs font-semibold uppercase tracking-wider text-white/40">Saved Palettes</p>
+                    <div className="space-y-2">
+                      {savedPalettes.length === 0 ? (
+                        <p className="px-4 py-3 text-sm text-white/40">No saved palettes yet</p>
+                      ) : (
+                        savedPalettes.map((savedPalette) => (
+                          <div
+                            key={savedPalette.id}
+                            className="rounded-xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10 cursor-pointer"
+                            onClick={() => setSelectedPalette(savedPalette)}
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-sm font-medium text-white">{savedPalette.name}</span>
+                              <button
+                                className="text-white/40 transition hover:text-white/70"
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deletePalette(savedPalette.id);
+                                }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                            <div className="flex gap-1">
+                              {savedPalette.colors.slice(0, 6).map((color) => (
+                                <div
+                                  key={color.hex}
+                                  className="h-6 w-6 rounded-full border border-white/20"
+                                  style={{ backgroundColor: color.hex }}
+                                  title={color.hex}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 border-t border-white/10 pt-6">
+                    <p className="mb-4 px-4 text-xs font-semibold uppercase tracking-wider text-white/40">About</p>
+                    <div className="space-y-1">
+                      <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
+                        <span className="font-medium">Version 1.0.0</span>
+                      </button>
+                      <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
+                        <span className="font-medium">Privacy Policy</span>
+                      </button>
+                    </div>
+                  </div>
+                </nav>
+
+                <div className="border-t border-white/10 p-4 sm:p-6">
+                  <p className="text-center text-xs text-white/40">Coloris by Shubham</p>
+                </div>
+              </div>
+            </aside>
+          </>
+        )}
+
+        {selectedPalette && (
+          <>
+            <div
+              className="pointer-events-auto fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={() => setSelectedPalette(null)}
+            />
+            <div className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="glass-panel w-full max-w-md rounded-2xl p-6 shadow-2xl animate-rise">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-white">{selectedPalette.name}</h3>
+                  <button
+                    className="glass-button inline-flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/18 hover:text-white"
+                    type="button"
+                    onClick={() => setSelectedPalette(null)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {selectedPalette.colors.map((color) => {
+                    const darkText = getLuminance(color) > 0.62;
+                    return (
+                      <button
+                        key={color.hex}
+                        className="group relative overflow-hidden rounded-xl border border-white/20 p-3 text-left transition hover:-translate-y-1 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-white/70"
+                        type="button"
+                        onClick={() => copyColor(color)}
+                        style={{ backgroundColor: color.hex }}
+                      >
+                        <div className={`relative z-10 ${darkText ? 'text-black' : 'text-white'}`}>
+                          <p className="text-sm font-bold uppercase">{color.hex}</p>
+                          <p className={`mt-1 text-xs ${darkText ? 'text-black/62' : 'text-white/68'}`}>RGB {color.rgb}</p>
+                        </div>
+                        <div className={`absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full ${darkText ? 'bg-black/12' : 'bg-white/18'}`}>
+                          {copiedHex === color.hex ? <Check size={12} /> : <Copy size={11} />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="pointer-events-auto relative z-10 flex min-h-[calc(100dvh-160px)] w-full items-center justify-center sm:min-h-[calc(100dvh-200px)]"></div>
 
@@ -377,6 +638,15 @@ function App() {
               </div>
               <span className="shrink-0 text-[10px] font-semibold text-white/44">{capturedAt ? `Saved ${capturedAt}` : 'Tap video to pick'}</span>
             </div>
+
+            {showSavePopup && (
+              <div className="mx-auto max-w-4xl animate-rise">
+                <div className="glass-button mx-auto flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-glow">
+                  <Check size={16} className="text-emerald-400" />
+                  <span>Palette saved! Access it from the sidebar</span>
+                </div>
+              </div>
+            )}
 
             <div className="glass-panel rounded-[24px] p-2.5 sm:rounded-[30px] sm:p-3">
               <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
@@ -394,6 +664,15 @@ function App() {
                   >
                     <ImageDown size={15} className="sm:w-[17px]" />
                     <span className="hidden sm:inline">Capture</span>
+                  </button>
+
+                  <button
+                    className="glass-button inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white transition hover:bg-white/18 active:scale-[0.98] sm:h-11 sm:gap-2 sm:px-4 sm:text-sm"
+                    type="button"
+                    onClick={savePalette}
+                  >
+                    <Save size={15} className="sm:w-[17px]" />
+                    <span className="hidden sm:inline">Save</span>
                   </button>
 
                   <button

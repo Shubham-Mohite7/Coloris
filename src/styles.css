@@ -6,7 +6,7 @@
 
 :root {
   color-scheme: dark;
-  background: #050509;
+  background: #000000;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
@@ -26,10 +26,7 @@ body,
 
 body {
   overflow: hidden;
-  background:
-    radial-gradient(circle at 18% 16%, rgba(49, 196, 141, 0.18), transparent 30%),
-    radial-gradient(circle at 78% 12%, rgba(71, 137, 255, 0.18), transparent 28%),
-    linear-gradient(135deg, #030305 0%, #09090f 44%, #101012 100%);
+  background: #000000;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
