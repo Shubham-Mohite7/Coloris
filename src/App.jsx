@@ -19,6 +19,12 @@ const TARGET_PALETTE_SIZE = 8;
 const ANALYSIS_INTERVAL = 1000;
 const DEDUPE_DISTANCE = 42;
 
+const DEDUPE_SENSITIVITY = {
+  low: 60,
+  medium: 42,
+  high: 25,
+};
+
 const RESOLUTION_PRESETS = {
   '480p': { width: 640, height: 480 },
   '720p': { width: 1280, height: 720 },
@@ -43,6 +49,28 @@ function rgbToHex(r, g, b) {
   return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function rgbToHsl(r, g, b) {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return `hsl(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+}
+
 function colorDistance(a, b) {
   const redMean = (a.r + b.r) / 2;
   const red = a.r - b.r;
@@ -55,17 +83,41 @@ function getLuminance({ r, g, b }) {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
-function toDisplayColor(color) {
-  const rounded = {
-    r: Math.round(color.r),
-    g: Math.round(color.g),
-    b: Math.round(color.b),
-  };
+function toDisplayColor(color, format = 'hex-rgb') {
+  let r, g, b;
+  
+  if (color.r !== undefined && color.g !== undefined && color.b !== undefined) {
+    r = Math.round(color.r);
+    g = Math.round(color.g);
+    b = Math.round(color.b);
+  } else if (color.hex) {
+    const hex = color.hex.replace('#', '');
+    r = parseInt(hex.substring(0, 2), 16);
+    g = parseInt(hex.substring(2, 4), 16);
+    b = parseInt(hex.substring(4, 6), 16);
+  } else {
+    return color;
+  }
+
+  const hex = rgbToHex(r, g, b);
+  const rgb = `${r}, ${g}, ${b}`;
+  const hsl = rgbToHsl(r, g, b);
+
+  let displayValue = '';
+  if (format === 'hex') displayValue = hex;
+  else if (format === 'rgb') displayValue = `rgb(${rgb})`;
+  else if (format === 'hsl') displayValue = hsl;
+  else displayValue = hex;
 
   return {
-    ...rounded,
-    hex: rgbToHex(rounded.r, rounded.g, rounded.b),
-    rgb: `${rounded.r}, ${rounded.g}, ${rounded.b}`,
+    ...color,
+    r,
+    g,
+    b,
+    hex,
+    rgb,
+    hsl,
+    displayValue,
     count: color.count ?? 1,
     source: color.source ?? 'frame',
   };
@@ -75,7 +127,7 @@ function quantize(value) {
   return Math.round(value / 18) * 18;
 }
 
-function extractPalette(video, canvas) {
+function extractPalette(video, canvas, targetSize = 8, dedupeDistance = 42) {
   const width = video.videoWidth;
   const height = video.videoHeight;
 
@@ -133,10 +185,10 @@ function extractPalette(video, canvas) {
 
   const palette = [];
   for (const candidate of candidates) {
-    if (palette.every((color) => colorDistance(candidate, color) > DEDUPE_DISTANCE)) {
+    if (palette.every((color) => colorDistance(candidate, color) > dedupeDistance)) {
       palette.push(candidate);
     }
-    if (palette.length === TARGET_PALETTE_SIZE) break;
+    if (palette.length === targetSize) break;
   }
 
   return palette.map(toDisplayColor);
@@ -191,10 +243,21 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [savedPalettes, setSavedPalettes] = useState([]);
   const [showSavePopup, setShowSavePopup] = useState(false);
+  const [showExportPopup, setShowExportPopup] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
   const [selectedPalette, setSelectedPalette] = useState(null);
   const [resolution, setResolution] = useState('720p');
   const [isCameraControlsOpen, setIsCameraControlsOpen] = useState(false);
   const [actualResolution, setActualResolution] = useState(null);
+  const [isPaletteSettingsOpen, setIsPaletteSettingsOpen] = useState(false);
+  const [isExportOptionsOpen, setIsExportOptionsOpen] = useState(false);
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
+  const [paletteSize, setPaletteSize] = useState(8);
+  const [colorFormat, setColorFormat] = useState('hex-rgb');
+  const [autoSave, setAutoSave] = useState(false);
+  const [dedupeSensitivity, setDedupeSensitivity] = useState('medium');
 
   const isCameraActive = cameraState === 'active';
   const isStarting = cameraState === 'starting';
@@ -223,12 +286,24 @@ function App() {
 
   const analyzeFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < 2) return;
-    const nextPalette = extractPalette(videoRef.current, canvasRef.current);
+    const nextPalette = extractPalette(videoRef.current, canvasRef.current, paletteSize, DEDUPE_SENSITIVITY[dedupeSensitivity]);
     if (nextPalette.length) {
-      setPalette(nextPalette.slice(0, TARGET_PALETTE_SIZE));
+      setPalette(nextPalette.slice(0, paletteSize));
       setMessage(`Palette refreshed from ${nextPalette.length} live colors`);
+      
+      if (autoSave) {
+        const newPalette = {
+          id: Date.now(),
+          name: `Auto-saved ${new Date().toLocaleTimeString()}`,
+          colors: nextPalette.slice(0, paletteSize),
+          createdAt: new Date().toISOString(),
+        };
+        const updatedPalettes = [newPalette, ...savedPalettes].slice(0, 50);
+        setSavedPalettes(updatedPalettes);
+        localStorage.setItem('coloris-saved-palettes', JSON.stringify(updatedPalettes));
+      }
     }
-  }, []);
+  }, [paletteSize, dedupeSensitivity, autoSave, savedPalettes]);
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -281,12 +356,13 @@ function App() {
 
   const copyColor = async (color) => {
     try {
-      await navigator.clipboard.writeText(color.hex);
+      const displayColor = toDisplayColor(color, colorFormat);
+      await navigator.clipboard.writeText(displayColor.displayValue);
       setCopiedHex(color.hex);
-      setMessage(`${color.hex.toUpperCase()} copied`);
+      setMessage(`${displayColor.displayValue.toUpperCase()} copied`);
       window.setTimeout(() => setCopiedHex(''), 1300);
     } catch {
-      setMessage('Copy failed. Select the HEX value manually.');
+      setMessage('Copy failed. Select the value manually.');
     }
   };
 
@@ -330,11 +406,11 @@ function App() {
     const context = canvas.getContext('2d', { willReadFrequently: true });
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const [r, g, b] = context.getImageData(point.x, point.y, 1, 1).data;
-    const sampled = toDisplayColor({ r, g, b, count: 999, source: 'picked' });
+    const sampled = toDisplayColor({ r, g, b, count: 999, source: 'picked' }, colorFormat);
 
-    setPalette((current) => [sampled, ...current.filter((color) => color.hex !== sampled.hex)].slice(0, TARGET_PALETTE_SIZE));
+    setPalette((current) => [sampled, ...current.filter((color) => color.hex !== sampled.hex)].slice(0, paletteSize));
     setSampleMarker({ x: point.screenX, y: point.screenY, hex: sampled.hex, id: Date.now() });
-    setMessage(`${sampled.hex.toUpperCase()} sampled from the frame`);
+    setMessage(`${sampled.displayValue.toUpperCase()} sampled from the frame`);
     window.setTimeout(() => setSampleMarker(null), 1200);
   };
 
@@ -409,19 +485,19 @@ function App() {
           className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 animate-rise"
           style={{ left: sampleMarker.x, top: sampleMarker.y }}
         >
-          <div className="grid h-20 w-20 place-items-center rounded-full border border-white/45 bg-black/25 shadow-glow backdrop-blur-xl">
-            <div className="h-9 w-9 rounded-full border border-white/70" style={{ backgroundColor: sampleMarker.hex }} />
+          <div className="grid h-16 w-16 sm:h-20 sm:w-20 place-items-center rounded-full border border-white/45 bg-black/25 shadow-glow backdrop-blur-xl">
+            <div className="h-7 w-7 sm:h-9 sm:w-9 rounded-full border border-white/70" style={{ backgroundColor: sampleMarker.hex }} />
           </div>
         </div>
       )}
 
       <section className="pointer-events-none relative z-10 min-h-dvh px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
-        <header className="pointer-events-auto mb-6 flex justify-center">
-          <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-4xl">Colōris</h1>
+        <header className="pointer-events-auto mb-4 sm:mb-6 flex justify-center">
+          <h1 className="text-xl font-extrabold tracking-tight text-white sm:text-2xl md:text-3xl lg:text-4xl">Colōris</h1>
         </header>
 
         <button
-          className="pointer-events-auto fixed left-3 top-3 z-30 glass-button inline-flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/18 active:scale-[0.98] sm:left-6 sm:top-6 sm:h-12 sm:w-12"
+          className="pointer-events-auto fixed left-3 top-3 z-30 glass-button inline-flex h-11 w-11 items-center justify-center rounded-full text-white transition hover:bg-white/18 active:scale-[0.98] sm:left-6 sm:top-6 sm:h-12 sm:w-12"
           type="button"
           aria-label="Menu"
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -435,7 +511,7 @@ function App() {
               className="pointer-events-auto fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
               onClick={() => setIsSidebarOpen(false)}
             />
-            <aside className="pointer-events-auto fixed left-0 top-0 z-50 h-full w-72 transform border-r border-white/10 bg-black/80 backdrop-blur-3xl shadow-2xl transition-transform duration-300 ease-out sm:w-80">
+            <aside className="pointer-events-auto fixed left-0 top-0 z-50 h-full w-[85vw] max-w-sm transform border-r border-white/10 bg-black/80 backdrop-blur-3xl shadow-2xl transition-transform duration-300 ease-out sm:w-80">
               <div className="flex h-full flex-col">
                 <div className="flex items-center justify-between border-b border-white/10 p-4 sm:p-6">
                   <h2 className="text-xl font-bold text-white">Menu</h2>
@@ -454,7 +530,7 @@ function App() {
                 <nav className="flex-1 overflow-y-auto p-4 sm:p-6">
                   <div className="space-y-1">
                     <button
-                      className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18"
+                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
                       onClick={() => setIsCameraControlsOpen(!isCameraControlsOpen)}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -494,27 +570,178 @@ function App() {
                         )}
                       </div>
                     )}
-                    <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
-                      <div className="flex items-center gap-3">
-                        <Focus size={18} />
-                        <span className="font-medium">Palette Settings</span>
+                    <button
+                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                      onClick={() => setIsPaletteSettingsOpen(!isPaletteSettingsOpen)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Focus size={18} />
+                          <span className="font-medium">Palette Settings</span>
+                        </div>
+                        <ChevronDown size={16} className={`transition-transform ${isPaletteSettingsOpen ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
-                    <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
-                      <div className="flex items-center gap-3">
-                        <Download size={18} />
-                        <span className="font-medium">Export Options</span>
+                    {isPaletteSettingsOpen && (
+                      <div className="px-4 py-2 space-y-2 sm:space-y-3">
+                        <div>
+                          <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:text-xs">Palette Size</label>
+                          <div className="relative">
+                            <select
+                              value={paletteSize}
+                              onChange={(e) => {
+                                setPaletteSize(parseInt(e.target.value));
+                                if (!isCameraActive) {
+                                  setPalette(defaultPalette.slice(0, parseInt(e.target.value)));
+                                }
+                              }}
+                              className="glass-button w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-white/30 focus:bg-white/15 sm:px-4 sm:py-3 sm:text-sm"
+                            >
+                              <option value={4}>4 colors</option>
+                              <option value={6}>6 colors</option>
+                              <option value={8}>8 colors (recommended)</option>
+                              <option value={10}>10 colors</option>
+                              <option value={12}>12 colors</option>
+                            </select>
+                            <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:text-xs">Deduplication Sensitivity</label>
+                          <div className="relative">
+                            <select
+                              value={dedupeSensitivity}
+                              onChange={(e) => setDedupeSensitivity(e.target.value)}
+                              className="glass-button w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-white/30 focus:bg-white/15 sm:px-4 sm:py-3 sm:text-sm"
+                            >
+                              <option value="low">Low (more similar colors)</option>
+                              <option value="medium">Medium (balanced)</option>
+                              <option value="high">High (more diverse)</option>
+                            </select>
+                            <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                          </div>
+                          <p className="mt-2 text-[10px] text-white/50 sm:text-xs">Applies during live camera analysis</p>
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                      onClick={() => setIsExportOptionsOpen(!isExportOptionsOpen)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Download size={18} />
+                          <span className="font-medium">Export Options</span>
+                        </div>
+                        <ChevronDown size={16} className={`transition-transform ${isExportOptionsOpen ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
-                    <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
-                      <div className="flex items-center gap-3">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="3"></circle>
-                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                        </svg>
-                        <span className="font-medium">Preferences</span>
+                    {isExportOptionsOpen && (
+                      <div className="px-4 py-2 space-y-2">
+                        <button
+                          className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left text-white transition hover:bg-white/18 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                          onClick={() => {
+                            const css = palette.map(c => `  --color-${c.hex.slice(1)}: ${c.hex};`).join('\n');
+                            navigator.clipboard.writeText(`:root {\n${css}\n}`);
+                            setExportMessage('CSS variables copied!');
+                            setShowExportPopup(true);
+                            window.setTimeout(() => setShowExportPopup(false), 2500);
+                          }}
+                        >
+                          <span className="font-medium">Copy as CSS Variables</span>
+                        </button>
+                        <button
+                          className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18 text-sm"
+                          onClick={() => {
+                            const json = JSON.stringify(palette.map(c => ({ hex: c.hex, rgb: c.rgb })), null, 2);
+                            navigator.clipboard.writeText(json);
+                            setExportMessage('JSON copied!');
+                            setShowExportPopup(true);
+                            window.setTimeout(() => setShowExportPopup(false), 2500);
+                          }}
+                        >
+                          <span className="font-medium">Copy as JSON</span>
+                        </button>
+                        <button
+                          className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18 text-sm"
+                          onClick={() => {
+                            const array = palette.map(c => c.hex).join(', ');
+                            navigator.clipboard.writeText(`[${array}]`);
+                            setExportMessage('Array copied!');
+                            setShowExportPopup(true);
+                            window.setTimeout(() => setShowExportPopup(false), 2500);
+                          }}
+                        >
+                          <span className="font-medium">Copy as Array</span>
+                        </button>
+                        <button
+                          className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18 text-sm"
+                          onClick={() => {
+                            const tailwind = palette.map(c => `bg-[${c.hex}]`).join(' ');
+                            navigator.clipboard.writeText(tailwind);
+                            setExportMessage('Tailwind classes copied!');
+                            setShowExportPopup(true);
+                            window.setTimeout(() => setShowExportPopup(false), 2500);
+                          }}
+                        >
+                          <span className="font-medium">Copy as Tailwind Classes</span>
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                      onClick={() => setIsPreferencesOpen(!isPreferencesOpen)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                          </svg>
+                          <span className="font-medium">Preferences</span>
+                        </div>
+                        <ChevronDown size={16} className={`transition-transform ${isPreferencesOpen ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
+                    {isPreferencesOpen && (
+                      <div className="px-4 py-2 space-y-2 sm:space-y-3">
+                        <div>
+                          <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:text-xs">Color Format</label>
+                          <div className="relative">
+                            <select
+                              value={colorFormat}
+                              onChange={(e) => setColorFormat(e.target.value)}
+                              className="glass-button w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-white/30 focus:bg-white/15 sm:px-4 sm:py-3 sm:text-sm"
+                            >
+                              <option value="hex-rgb">HEX + RGB</option>
+                              <option value="hex">HEX only</option>
+                              <option value="rgb">RGB only</option>
+                              <option value="hsl">HSL</option>
+                            </select>
+                            <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-white/80 sm:text-sm">Auto-save palettes</label>
+                          <button
+                            onClick={() => setAutoSave(!autoSave)}
+                            className={`relative h-5 w-10 rounded-full transition-colors duration-200 sm:h-6 sm:w-11 ${autoSave ? 'bg-emerald-500' : 'bg-white/20'}`}
+                          >
+                            <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-200 sm:top-1 sm:left-1 ${autoSave ? 'translate-x-5' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                        <button
+                          className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left text-white transition hover:bg-white/18 text-xs sm:px-4 sm:py-3 sm:text-sm"
+                          onClick={() => {
+                            localStorage.removeItem('coloris-saved-palettes');
+                            setSavedPalettes([]);
+                            setMessage('All data cleared');
+                          }}
+                        >
+                          <span className="font-medium">Clear All Data</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-8 border-t border-white/10 pt-6">
@@ -526,13 +753,13 @@ function App() {
                         savedPalettes.map((savedPalette) => (
                           <div
                             key={savedPalette.id}
-                            className="rounded-xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10 cursor-pointer"
+                            className="rounded-xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10 cursor-pointer active:scale-[0.98]"
                             onClick={() => setSelectedPalette(savedPalette)}
                           >
                             <div className="mb-2 flex items-center justify-between">
-                              <span className="text-sm font-medium text-white">{savedPalette.name}</span>
+                              <span className="text-sm font-medium text-white truncate pr-2">{savedPalette.name}</span>
                               <button
-                                className="text-white/40 transition hover:text-white/70"
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white/70"
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -546,7 +773,7 @@ function App() {
                               {savedPalette.colors.slice(0, 6).map((color) => (
                                 <div
                                   key={color.hex}
-                                  className="h-6 w-6 rounded-full border border-white/20"
+                                  className="h-5 w-5 sm:h-6 sm:w-6 rounded-full border border-white/20"
                                   style={{ backgroundColor: color.hex }}
                                   title={color.hex}
                                 />
@@ -564,8 +791,17 @@ function App() {
                       <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
                         <span className="font-medium">Version 1.0.0</span>
                       </button>
-                      <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
+                      <button
+                        className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                        onClick={() => setShowPrivacyModal(true)}
+                      >
                         <span className="font-medium">Privacy Policy</span>
+                      </button>
+                      <button
+                        className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                        onClick={() => setShowLicenseModal(true)}
+                      >
+                        <span className="font-medium">License</span>
                       </button>
                     </div>
                   </div>
@@ -585,8 +821,8 @@ function App() {
               className="pointer-events-auto fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
               onClick={() => setSelectedPalette(null)}
             />
-            <div className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div className="glass-panel w-full max-w-md rounded-2xl p-6 shadow-2xl animate-rise">
+            <div className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+              <div className="glass-panel w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl animate-rise bg-black/80 backdrop-blur-3xl max-h-[90vh] overflow-y-auto">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-xl font-bold text-white">{selectedPalette.name}</h3>
                   <button
@@ -603,6 +839,7 @@ function App() {
                 <div className="grid grid-cols-2 gap-3">
                   {selectedPalette.colors.map((color) => {
                     const darkText = getLuminance(color) > 0.62;
+                    const displayColor = toDisplayColor(color, colorFormat);
                     return (
                       <button
                         key={color.hex}
@@ -612,8 +849,10 @@ function App() {
                         style={{ backgroundColor: color.hex }}
                       >
                         <div className={`relative z-10 ${darkText ? 'text-black' : 'text-white'}`}>
-                          <p className="text-sm font-bold uppercase">{color.hex}</p>
-                          <p className={`mt-1 text-xs ${darkText ? 'text-black/62' : 'text-white/68'}`}>RGB {color.rgb}</p>
+                          <p className="text-sm font-bold uppercase">{displayColor.displayValue}</p>
+                          {(colorFormat === 'hex-rgb' || colorFormat === 'hex') && (
+                            <p className={`mt-1 text-xs ${darkText ? 'text-black/62' : 'text-white/68'}`}>RGB {color.rgb}</p>
+                          )}
                         </div>
                         <div className={`absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full ${darkText ? 'bg-black/12' : 'bg-white/18'}`}>
                           {copiedHex === color.hex ? <Check size={12} /> : <Copy size={11} />}
@@ -627,9 +866,91 @@ function App() {
           </>
         )}
 
+        {showPrivacyModal && (
+          <>
+            <div
+              className="pointer-events-auto fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={() => setShowPrivacyModal(false)}
+            />
+            <div className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+              <div className="glass-panel w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl animate-rise bg-black/80 backdrop-blur-3xl max-h-[90vh] overflow-y-auto">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-white">Privacy Policy</h3>
+                  <button
+                    className="glass-button inline-flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/18 hover:text-white"
+                    type="button"
+                    onClick={() => setShowPrivacyModal(false)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-4 text-sm text-white/80">
+                  <div className="border-b border-white/10 pb-3">
+                    <h4 className="font-semibold text-white mb-2">1. Data Collection & Processing</h4>
+                    <p className="text-white/70 leading-relaxed">Coloris operates entirely on your device. Camera feed is processed locally for real-time color extraction. No images, video, or color data are transmitted to external servers or stored remotely.</p>
+                  </div>
+                  <div className="border-b border-white/10 pb-3">
+                    <h4 className="font-semibold text-white mb-2">2. Local Storage</h4>
+                    <p className="text-white/70 leading-relaxed">Saved color palettes are stored exclusively in your browser's localStorage. This data remains on your device and is never accessed by or transmitted to our servers.</p>
+                  </div>
+                  <div className="border-b border-white/10 pb-3">
+                    <h4 className="font-semibold text-white mb-2">3. Camera Permissions</h4>
+                    <p className="text-white/70 leading-relaxed">Camera access is requested solely for the purpose of live color extraction. The feed is never recorded, stored, or transmitted. You may revoke camera access at any time through your browser settings.</p>
+                  </div>
+                  <div className="border-b border-white/10 pb-3">
+                    <h4 className="font-semibold text-white mb-2">4. Third-Party Services</h4>
+                    <p className="text-white/70 leading-relaxed">Coloris does not integrate with third-party analytics services, tracking tools, or advertising networks. No data is shared with external parties.</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-white mb-2">5. Data Retention & Deletion</h4>
+                    <p className="text-white/70 leading-relaxed">You may delete all saved palettes at any time through the application's settings. Clearing browser data will remove all locally stored information.</p>
+                  </div>
+                  <p className="text-xs text-white/40 pt-2">Effective Date: July 6, 2026 | Version: 1.0</p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {showLicenseModal && (
+          <>
+            <div
+              className="pointer-events-auto fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={() => setShowLicenseModal(false)}
+            />
+            <div className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+              <div className="glass-panel w-full max-w-md rounded-2xl p-5 sm:p-6 shadow-2xl animate-rise bg-black/80 backdrop-blur-3xl max-h-[90vh] overflow-y-auto">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-white">License</h3>
+                  <button
+                    className="glass-button inline-flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/18 hover:text-white"
+                    type="button"
+                    onClick={() => setShowLicenseModal(false)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-4 text-sm text-white/80">
+                  <p><strong className="text-white">MIT License</strong></p>
+                  <p className="text-xs">Copyright (c) 2026 Shubham Mohite</p>
+                  <p className="text-xs">Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:</p>
+                  <p className="text-xs">The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.</p>
+                  <p className="text-xs">THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.</p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         <div className="pointer-events-auto relative z-10 flex min-h-[calc(100dvh-160px)] w-full items-center justify-center sm:min-h-[calc(100dvh-200px)]"></div>
 
-        <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-20 px-2 pb-[calc(8px+env(safe-area-inset-bottom))] sm:px-5 sm:pb-[calc(20px+env(safe-area-inset-bottom))]">
+        <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-20 px-3 pb-[calc(12px+env(safe-area-inset-bottom))] sm:px-5 sm:pb-[calc(20px+env(safe-area-inset-bottom))]">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 sm:gap-3">
             <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 rounded-full border border-white/12 bg-black/24 p-1.5 shadow-glass backdrop-blur-3xl md:hidden">
               <div className="flex min-w-0 items-center gap-1.5 px-1.5">
@@ -648,76 +969,88 @@ function App() {
               </div>
             )}
 
-            <div className="glass-panel rounded-[24px] p-2.5 sm:rounded-[30px] sm:p-3">
+            {showExportPopup && (
+              <div className="mx-auto max-w-4xl animate-rise">
+                <div className="glass-button mx-auto flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-glow">
+                  <Check size={16} className="text-emerald-400" />
+                  <span>{exportMessage}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="glass-panel rounded-[20px] p-2 sm:rounded-[24px] sm:p-2.5 md:rounded-[28px] md:p-3">
               <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 px-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white/48">
-                  <Focus size={12} />
+                <div className="flex items-center gap-1.5 px-0.5 text-[9px] font-bold uppercase tracking-[0.15em] text-white/48 sm:text-[10px] md:text-[11px]">
+                  <Focus size={10} sm:size={12} />
                   <span>Live palette</span>
                 </div>
 
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <button
-                    className="glass-button inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white transition hover:bg-white/18 active:scale-[0.98] sm:h-11 sm:gap-2 sm:px-4 sm:text-sm"
+                    className="glass-button inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[10px] font-bold text-white transition hover:bg-white/18 active:scale-[0.98] sm:h-9 sm:gap-1.5 sm:px-3 sm:text-xs md:h-11 md:gap-2 md:px-4 md:text-sm"
                     type="button"
                     onClick={captureFrame}
                     disabled={!isCameraActive}
                   >
-                    <ImageDown size={15} className="sm:w-[17px]" />
-                    <span className="hidden sm:inline">Capture</span>
+                    <ImageDown size={13} className="sm:w-[15px] md:w-[17px]" />
+                    <span className="hidden sm:inline md:inline">Capture</span>
                   </button>
 
                   <button
-                    className="glass-button inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white transition hover:bg-white/18 active:scale-[0.98] sm:h-11 sm:gap-2 sm:px-4 sm:text-sm"
+                    className="glass-button inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[10px] font-bold text-white transition hover:bg-white/18 active:scale-[0.98] sm:h-9 sm:gap-1.5 sm:px-3 sm:text-xs md:h-11 md:gap-2 md:px-4 md:text-sm"
                     type="button"
                     onClick={savePalette}
                   >
-                    <Save size={15} className="sm:w-[17px]" />
-                    <span className="hidden sm:inline">Save</span>
+                    <Save size={13} className="sm:w-[15px] md:w-[17px]" />
+                    <span className="hidden sm:inline md:inline">Save</span>
                   </button>
 
                   <button
-                    className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-extrabold text-black shadow-glow transition active:scale-[0.98] sm:h-11 sm:gap-2 sm:px-5 sm:text-sm ${
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[10px] font-extrabold text-black shadow-glow transition active:scale-[0.98] sm:h-9 sm:gap-1.5 sm:px-3 sm:text-xs md:h-11 md:gap-2 md:px-5 md:text-sm ${
                       isCameraActive || isStarting ? 'bg-white' : 'bg-[#f5f2e8]'
                     }`}
                     type="button"
                     onClick={toggleCamera}
                   >
-                    {isStarting ? <Loader2 className="animate-spin" size={15} /> : isCameraActive ? <CameraOff size={15} /> : <Camera size={15} />}
-                    <span className="hidden sm:inline">{isCameraActive || isStarting ? 'Stop Camera' : 'Start Camera'}</span>
+                    {isStarting ? <Loader2 className="animate-spin" size={13} /> : isCameraActive ? <CameraOff size={13} /> : <Camera size={13} />}
+                    <span className="hidden sm:inline md:inline">{isCameraActive || isStarting ? 'Stop Camera' : 'Start Camera'}</span>
                     <span className="sm:hidden">{isCameraActive || isStarting ? 'Stop' : 'Start'}</span>
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+              <div className="grid grid-cols-2 gap-2 sm:gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
                 {palette.map((color, index) => {
-                  const darkText = getLuminance(color) > 0.62;
+                  const displayColor = toDisplayColor(color, colorFormat);
+                  const darkText = getLuminance(displayColor) > 0.62;
                   return (
                     <button
                       key={`${color.hex}-${index}`}
-                      className="swatch-shine group relative min-h-[90px] overflow-hidden rounded-2xl border border-white/20 p-2.5 text-left shadow-glass transition duration-300 hover:-translate-y-1 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-white/70 sm:min-h-[110px] sm:rounded-3xl sm:p-3"
+                      className="swatch-shine group relative min-h-[80px] overflow-hidden rounded-xl border border-white/20 p-2 text-left shadow-glass transition duration-300 hover:-translate-y-1 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-white/70 sm:min-h-[90px] sm:rounded-2xl sm:p-2.5 md:min-h-[100px] md:rounded-2xl md:p-3 sm:min-h-[110px] sm:rounded-3xl sm:p-3"
                       type="button"
                       onClick={() => copyColor(color)}
                       style={{ backgroundColor: color.hex }}
                       aria-label={`Copy ${color.hex}`}
                     >
-                      <div className={`relative z-10 flex h-full flex-col justify-between ${darkText ? 'text-black' : 'text-white'}`}>
+                      <div className={`relative z-10 flex h-full flex-col justify-between ${darkText ? 'text-black' : 'text-white/95'}`}>
                         <div className="flex items-center justify-between gap-2">
                           <span
                             className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.1em] ${
-                              darkText ? 'bg-black/12 text-black/74' : 'bg-white/18 text-white/86'
+                              darkText ? 'bg-black/12 text-black/74' : 'bg-black/30 text-white/90'
                             }`}
                           >
                             {color.source === 'picked' ? 'Picked' : `0${index + 1}`}
                           </span>
-                          <span className={`grid h-6 w-6 place-items-center rounded-full ${darkText ? 'bg-black/12' : 'bg-white/18'}`}>
+                          <span className={`grid h-6 w-6 place-items-center rounded-full ${darkText ? 'bg-black/12' : 'bg-black/30'}`}>
                             {copiedHex === color.hex ? <Check size={12} /> : <Copy size={11} />}
                           </span>
                         </div>
 
                         <div>
-                          <p className="text-sm font-extrabold uppercase tracking-normal sm:text-xl">{color.hex}</p>
-                          <p className={`mt-0.5 text-[10px] font-bold sm:text-xs ${darkText ? 'text-black/62' : 'text-white/68'}`}>RGB {color.rgb}</p>
+                          <p className="text-xs font-extrabold uppercase tracking-normal sm:text-sm md:text-base lg:text-xl">{displayColor.displayValue}</p>
+                          {(colorFormat === 'hex-rgb' || colorFormat === 'hex') && (
+                            <p className={`mt-0.5 text-[9px] font-bold sm:text-[10px] md:text-xs ${darkText ? 'text-black/62' : 'text-white/80'}`}>RGB {color.rgb}</p>
+                          )}
                         </div>
                       </div>
                     </button>
