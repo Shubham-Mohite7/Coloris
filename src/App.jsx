@@ -7,12 +7,16 @@ import {
   Copy,
   Download,
   Focus,
+  Github,
   ImageDown,
+  Linkedin,
   Loader2,
   Menu,
   MousePointer2,
   Save,
   Trash2,
+  X,
+  Globe,
 } from 'lucide-react';
 
 const TARGET_PALETTE_SIZE = 8;
@@ -246,6 +250,8 @@ function App() {
   const [showExportPopup, setShowExportPopup] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
   const [selectedPalette, setSelectedPalette] = useState(null);
+  const [exportSource, setExportSource] = useState('current');
+  const [showTutorial, setShowTutorial] = useState(true);
   const [resolution, setResolution] = useState('720p');
   const [isCameraControlsOpen, setIsCameraControlsOpen] = useState(false);
   const [actualResolution, setActualResolution] = useState(null);
@@ -261,6 +267,15 @@ function App() {
 
   const isCameraActive = cameraState === 'active';
   const isStarting = cameraState === 'starting';
+
+  useEffect(() => {
+    if (showTutorial) {
+      const timer = window.setTimeout(() => {
+        setShowTutorial(false);
+      }, 10000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [showTutorial]);
 
   const status = useMemo(() => {
     if (cameraState === 'active') return { label: 'Live analysis', tone: 'bg-emerald-300', pulse: true };
@@ -492,8 +507,13 @@ function App() {
       )}
 
       <section className="pointer-events-none relative z-10 min-h-dvh px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
-        <header className="pointer-events-auto mb-4 sm:mb-6 flex justify-center">
-          <h1 className="text-xl font-extrabold tracking-tight text-white sm:text-2xl md:text-3xl lg:text-4xl">Colōris</h1>
+        <header className="pointer-events-auto mb-4 sm:mb-6 flex justify-center items-center">
+          <img 
+            src="/logo.png" 
+            alt="C" 
+            className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 lg:h-16 lg:w-16 object-contain -mr-3"
+          />
+          <h1 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-white/90 to-white/70 bg-clip-text text-transparent sm:text-2xl md:text-3xl lg:text-4xl">olōris</h1>
         </header>
 
         <button
@@ -511,10 +531,10 @@ function App() {
               className="pointer-events-auto fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
               onClick={() => setIsSidebarOpen(false)}
             />
-            <aside className="pointer-events-auto fixed left-0 top-0 z-50 h-full w-[85vw] max-w-sm transform border-r border-white/10 bg-black/80 backdrop-blur-3xl shadow-2xl transition-transform duration-300 ease-out sm:w-80">
+            <aside className="pointer-events-auto fixed left-0 top-0 z-50 h-full w-[75vw] max-w-sm transform border-r border-white/10 bg-black/80 backdrop-blur-3xl shadow-2xl transition-transform duration-300 ease-out sm:w-80">
               <div className="flex h-full flex-col">
-                <div className="flex items-center justify-between border-b border-white/10 p-4 sm:p-6">
-                  <h2 className="text-xl font-bold text-white">Menu</h2>
+                <div className="flex items-center justify-between border-b border-white/10 p-3 sm:p-6">
+                  <h2 className="text-lg font-bold text-white sm:text-xl">Menu</h2>
                   <button
                     className="glass-button inline-flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/18 hover:text-white"
                     type="button"
@@ -527,23 +547,23 @@ function App() {
                   </button>
                 </div>
 
-                <nav className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <nav className="flex-1 overflow-y-auto p-3 sm:p-6">
                   <div className="space-y-1">
                     <button
-                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                      className="w-full rounded-xl px-3 py-2.5 text-left text-white/70 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-3"
                       onClick={() => setIsCameraControlsOpen(!isCameraControlsOpen)}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <Camera size={18} />
-                          <span className="font-medium">Camera Controls</span>
+                      <div className="flex items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <Camera size={16} sm:size={18} />
+                          <span className="font-medium text-sm sm:text-base">Camera Controls</span>
                         </div>
-                        <ChevronDown size={16} className={`transition-transform ${isCameraControlsOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} sm:size={16} className={`transition-transform ${isCameraControlsOpen ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
                     {isCameraControlsOpen && (
-                      <div className="px-4 py-2">
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">Resolution</label>
+                      <div className="px-3 py-2 sm:px-4">
+                        <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:text-xs">Resolution</label>
                         <div className="relative">
                           <select
                             value={resolution}
@@ -554,36 +574,36 @@ function App() {
                                 setTimeout(() => startCamera(), 100);
                               }
                             }}
-                            className="glass-button w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-white/30 focus:bg-white/15"
+                            className="glass-button w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-white/30 focus:bg-white/15 sm:px-4 sm:py-3 sm:text-sm"
                           >
                             <option value="480p">480p (640x480)</option>
                             <option value="720p">720p (1280x720)</option>
                             <option value="1080p">1080p (1920x1080)</option>
                             <option value="4K">4K (3840x2160)</option>
                           </select>
-                          <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                          <ChevronDown size={14} sm:size={16} className="pointer-events-none absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-white/50" />
                         </div>
                         {actualResolution && (
-                          <p className="mt-2 text-xs text-white/50">
+                          <p className="mt-2 text-[10px] text-white/50 sm:text-xs">
                             Actual: <span className="font-medium text-white/70">{actualResolution}</span>
                           </p>
                         )}
                       </div>
                     )}
                     <button
-                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                      className="w-full rounded-xl px-3 py-2.5 text-left text-white/70 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-3"
                       onClick={() => setIsPaletteSettingsOpen(!isPaletteSettingsOpen)}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <Focus size={18} />
-                          <span className="font-medium">Palette Settings</span>
+                      <div className="flex items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <Focus size={16} sm:size={18} />
+                          <span className="font-medium text-sm sm:text-base">Palette Settings</span>
                         </div>
-                        <ChevronDown size={16} className={`transition-transform ${isPaletteSettingsOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} sm:size={16} className={`transition-transform ${isPaletteSettingsOpen ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
                     {isPaletteSettingsOpen && (
-                      <div className="px-4 py-2 space-y-2 sm:space-y-3">
+                      <div className="px-3 py-2 space-y-2 sm:space-y-3 sm:px-4">
                         <div>
                           <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:text-xs">Palette Size</label>
                           <div className="relative">
@@ -603,7 +623,7 @@ function App() {
                               <option value={10}>10 colors</option>
                               <option value={12}>12 colors</option>
                             </select>
-                            <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                            <ChevronDown size={14} sm:size={16} className="pointer-events-none absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-white/50" />
                           </div>
                         </div>
                         <div>
@@ -618,30 +638,47 @@ function App() {
                               <option value="medium">Medium (balanced)</option>
                               <option value="high">High (more diverse)</option>
                             </select>
-                            <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                            <ChevronDown size={14} sm:size={16} className="pointer-events-none absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-white/50" />
                           </div>
                           <p className="mt-2 text-[10px] text-white/50 sm:text-xs">Applies during live camera analysis</p>
                         </div>
                       </div>
                     )}
                     <button
-                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                      className="w-full rounded-xl px-3 py-2.5 text-left text-white/70 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-3"
                       onClick={() => setIsExportOptionsOpen(!isExportOptionsOpen)}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <Download size={18} />
-                          <span className="font-medium">Export Options</span>
+                      <div className="flex items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <Download size={16} sm:size={18} />
+                          <span className="font-medium text-sm sm:text-base">Export Options</span>
                         </div>
-                        <ChevronDown size={16} className={`transition-transform ${isExportOptionsOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} sm:size={16} className={`transition-transform ${isExportOptionsOpen ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
                     {isExportOptionsOpen && (
-                      <div className="px-4 py-2 space-y-2">
+                      <div className="px-3 py-2 space-y-2 sm:px-4">
+                        <div>
+                          <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:text-xs">Export From</label>
+                          <div className="relative">
+                            <select
+                              value={exportSource}
+                              onChange={(e) => setExportSource(e.target.value)}
+                              className="glass-button w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-xs text-white outline-none backdrop-blur-xl transition hover:bg-white/10 focus:border-white/30 focus:bg-white/15 sm:px-4 sm:py-3 sm:text-sm"
+                            >
+                              <option value="current">Current Palette</option>
+                              {savedPalettes.map((sp) => (
+                                <option key={sp.id} value={sp.id}>{sp.name}</option>
+                              ))}
+                            </select>
+                            <ChevronDown size={14} sm:size={16} className="pointer-events-none absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                          </div>
+                        </div>
                         <button
                           className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left text-white transition hover:bg-white/18 text-xs sm:px-4 sm:py-3 sm:text-sm"
                           onClick={() => {
-                            const css = palette.map(c => `  --color-${c.hex.slice(1)}: ${c.hex};`).join('\n');
+                            const sourcePalette = exportSource === 'current' ? palette : savedPalettes.find(p => p.id === exportSource)?.colors || palette;
+                            const css = sourcePalette.map(c => `  --color-${c.hex.slice(1)}: ${c.hex};`).join('\n');
                             navigator.clipboard.writeText(`:root {\n${css}\n}`);
                             setExportMessage('CSS variables copied!');
                             setShowExportPopup(true);
@@ -651,9 +688,10 @@ function App() {
                           <span className="font-medium">Copy as CSS Variables</span>
                         </button>
                         <button
-                          className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18 text-sm"
+                          className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left text-white transition hover:bg-white/18 text-xs sm:px-4 sm:py-3 sm:text-sm"
                           onClick={() => {
-                            const json = JSON.stringify(palette.map(c => ({ hex: c.hex, rgb: c.rgb })), null, 2);
+                            const sourcePalette = exportSource === 'current' ? palette : savedPalettes.find(p => p.id === exportSource)?.colors || palette;
+                            const json = JSON.stringify(sourcePalette.map(c => ({ hex: c.hex, rgb: c.rgb })), null, 2);
                             navigator.clipboard.writeText(json);
                             setExportMessage('JSON copied!');
                             setShowExportPopup(true);
@@ -663,9 +701,10 @@ function App() {
                           <span className="font-medium">Copy as JSON</span>
                         </button>
                         <button
-                          className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18 text-sm"
+                          className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left text-white transition hover:bg-white/18 text-xs sm:px-4 sm:py-3 sm:text-sm"
                           onClick={() => {
-                            const array = palette.map(c => c.hex).join(', ');
+                            const sourcePalette = exportSource === 'current' ? palette : savedPalettes.find(p => p.id === exportSource)?.colors || palette;
+                            const array = sourcePalette.map(c => c.hex).join(', ');
                             navigator.clipboard.writeText(`[${array}]`);
                             setExportMessage('Array copied!');
                             setShowExportPopup(true);
@@ -675,9 +714,10 @@ function App() {
                           <span className="font-medium">Copy as Array</span>
                         </button>
                         <button
-                          className="w-full rounded-xl bg-white/10 px-4 py-3 text-left text-white transition hover:bg-white/18 text-sm"
+                          className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left text-white transition hover:bg-white/18 text-xs sm:px-4 sm:py-3 sm:text-sm"
                           onClick={() => {
-                            const tailwind = palette.map(c => `bg-[${c.hex}]`).join(' ');
+                            const sourcePalette = exportSource === 'current' ? palette : savedPalettes.find(p => p.id === exportSource)?.colors || palette;
+                            const tailwind = sourcePalette.map(c => `bg-[${c.hex}]`).join(' ');
                             navigator.clipboard.writeText(tailwind);
                             setExportMessage('Tailwind classes copied!');
                             setShowExportPopup(true);
@@ -689,22 +729,22 @@ function App() {
                       </div>
                     )}
                     <button
-                      className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                      className="w-full rounded-xl px-3 py-2.5 text-left text-white/70 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-3"
                       onClick={() => setIsPreferencesOpen(!isPreferencesOpen)}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <div className="flex items-center justify-between gap-2 sm:gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" sm:width="18" sm:height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/90">
                             <circle cx="12" cy="12" r="3"></circle>
                             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                           </svg>
-                          <span className="font-medium">Preferences</span>
+                          <span className="font-medium text-sm sm:text-base">Preferences</span>
                         </div>
-                        <ChevronDown size={16} className={`transition-transform ${isPreferencesOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={14} sm:size={16} className={`transition-transform ${isPreferencesOpen ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
                     {isPreferencesOpen && (
-                      <div className="px-4 py-2 space-y-2 sm:space-y-3">
+                      <div className="px-3 py-2 space-y-2 sm:space-y-3 sm:px-4">
                         <div>
                           <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:text-xs">Color Format</label>
                           <div className="relative">
@@ -718,7 +758,7 @@ function App() {
                               <option value="rgb">RGB only</option>
                               <option value="hsl">HSL</option>
                             </select>
-                            <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/50" />
+                            <ChevronDown size={14} sm:size={16} className="pointer-events-none absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-white/50" />
                           </div>
                         </div>
                         <div className="flex items-center justify-between">
@@ -785,30 +825,69 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="mt-8 border-t border-white/10 pt-6">
-                    <p className="mb-4 px-4 text-xs font-semibold uppercase tracking-wider text-white/40">About</p>
+                  <div className="mt-8 border-t border-white/10 pt-4 sm:pt-6">
+                    <p className="mb-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/40 sm:px-4 sm:text-xs">About</p>
                     <div className="space-y-1">
-                      <button className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white">
-                        <span className="font-medium">Version 1.0.0</span>
+                      <button className="w-full rounded-xl px-3 py-2.5 text-left text-white/70 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-3">
+                        <span className="font-medium text-sm sm:text-base">Version 1.0.0</span>
                       </button>
                       <button
-                        className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                        className="w-full rounded-xl px-3 py-2.5 text-left text-white/70 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-3"
                         onClick={() => setShowPrivacyModal(true)}
                       >
-                        <span className="font-medium">Privacy Policy</span>
+                        <span className="font-medium text-sm sm:text-base">Privacy Policy</span>
                       </button>
                       <button
-                        className="w-full rounded-xl px-4 py-3 text-left text-white/70 transition hover:bg-white/10 hover:text-white"
+                        className="w-full rounded-xl px-3 py-2.5 text-left text-white/70 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-3"
                         onClick={() => setShowLicenseModal(true)}
                       >
-                        <span className="font-medium">License</span>
+                        <span className="font-medium text-sm sm:text-base">License</span>
                       </button>
                     </div>
                   </div>
                 </nav>
 
-                <div className="border-t border-white/10 p-4 sm:p-6">
-                  <p className="text-center text-xs text-white/40">Coloris by Shubham</p>
+                <div className="border-t border-white/10 p-3 sm:p-6">
+                  <p className="mb-3 text-center text-[10px] text-white/40 sm:text-xs">Developer</p>
+                  <div className="flex items-center justify-center gap-2 sm:gap-3">
+                    <a
+                      href="https://github.com/Shubham-Mohite7"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="glass-button flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white sm:h-9 sm:w-9"
+                      aria-label="GitHub"
+                    >
+                      <Github size={16} sm:size={18} />
+                    </a>
+                    <a
+                      href="https://x.com/zuckify"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="glass-button flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white sm:h-9 sm:w-9"
+                      aria-label="X (Twitter)"
+                    >
+                      <X size={16} sm:size={18} />
+                    </a>
+                    <a
+                      href="https://www.linkedin.com/in/elite-shubham"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="glass-button flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white sm:h-9 sm:w-9"
+                      aria-label="LinkedIn"
+                    >
+                      <Linkedin size={16} sm:size={18} />
+                    </a>
+                    <a
+                      href="https://www.mohite.online"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="glass-button flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white sm:h-9 sm:w-9"
+                      aria-label="Portfolio"
+                    >
+                      <Globe size={16} sm:size={18} />
+                    </a>
+                  </div>
+                  <p className="mt-3 text-center text-[9px] text-white/30 sm:text-[10px]">Coloris by Shubham</p>
                 </div>
               </div>
             </aside>
@@ -838,8 +917,8 @@ function App() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {selectedPalette.colors.map((color) => {
-                    const darkText = getLuminance(color) > 0.62;
                     const displayColor = toDisplayColor(color, colorFormat);
+                    const darkText = getLuminance(displayColor) > 0.62;
                     return (
                       <button
                         key={color.hex}
@@ -848,13 +927,13 @@ function App() {
                         onClick={() => copyColor(color)}
                         style={{ backgroundColor: color.hex }}
                       >
-                        <div className={`relative z-10 ${darkText ? 'text-black' : 'text-white'}`}>
+                        <div className={`relative z-10 ${darkText ? 'text-black' : 'text-white/95'}`}>
                           <p className="text-sm font-bold uppercase">{displayColor.displayValue}</p>
                           {(colorFormat === 'hex-rgb' || colorFormat === 'hex') && (
-                            <p className={`mt-1 text-xs ${darkText ? 'text-black/62' : 'text-white/68'}`}>RGB {color.rgb}</p>
+                            <p className={`mt-1 text-xs ${darkText ? 'text-black/62' : 'text-white/80'}`}>RGB {color.rgb}</p>
                           )}
                         </div>
-                        <div className={`absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full ${darkText ? 'bg-black/12' : 'bg-white/18'}`}>
+                        <div className={`absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full ${darkText ? 'bg-black/12' : 'bg-black/30'}`}>
                           {copiedHex === color.hex ? <Check size={12} /> : <Copy size={11} />}
                         </div>
                       </button>
@@ -950,16 +1029,91 @@ function App() {
 
         <div className="pointer-events-auto relative z-10 flex min-h-[calc(100dvh-160px)] w-full items-center justify-center sm:min-h-[calc(100dvh-200px)]"></div>
 
+        {showTutorial && (
+          <div className="pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="pointer-events-auto mx-auto w-full max-w-lg">
+              <div className="glass-panel rounded-2xl p-6 shadow-2xl animate-rise bg-black/80 backdrop-blur-3xl">
+                <div className="mb-4 flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-white sm:text-xl">Welcome to Colōris</h3>
+                    <p className="mt-1 text-xs text-white/60 sm:text-sm">Extract elegant color palettes in real-time</p>
+                  </div>
+                  <button
+                    className="glass-button inline-flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/18 hover:text-white"
+                    type="button"
+                    onClick={() => setShowTutorial(false)}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-4 text-sm text-white/80">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
+                      <Camera size={16} className="text-white/90" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white">Start Camera</p>
+                      <p className="mt-1 text-xs text-white/60">Enable camera to extract colors from your surroundings</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
+                      <Focus size={16} className="text-white/90" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white">Tap to Sample</p>
+                      <p className="mt-1 text-xs text-white/60">Tap anywhere on the video to pick a specific color</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
+                      <Save size={16} className="text-white/90" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white">Save Palettes</p>
+                      <p className="mt-1 text-xs text-white/60">Save your favorite palettes for later use</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
+                      <Download size={16} className="text-white/90" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white">Export Colors</p>
+                      <p className="mt-1 text-xs text-white/60">Copy as CSS, JSON, Array, or Tailwind classes</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6 flex items-center justify-between gap-3">
+                  <button
+                    className="glass-button flex-1 rounded-xl px-4 py-2.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white sm:text-sm"
+                    type="button"
+                    onClick={() => setShowTutorial(false)}
+                  >
+                    Skip
+                  </button>
+                  <button
+                    className="glass-button flex-1 rounded-xl bg-white/10 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-white/18 sm:text-sm"
+                    type="button"
+                    onClick={() => {
+                      setShowTutorial(false);
+                      toggleCamera();
+                    }}
+                  >
+                    Get Started
+                  </button>
+                </div>
+                <p className="mt-4 text-center text-[10px] text-white/40">Auto-dismiss in 10 seconds</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-20 px-3 pb-[calc(12px+env(safe-area-inset-bottom))] sm:px-5 sm:pb-[calc(20px+env(safe-area-inset-bottom))]">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 sm:gap-3">
-            <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 rounded-full border border-white/12 bg-black/24 p-1.5 shadow-glass backdrop-blur-3xl md:hidden">
-              <div className="flex min-w-0 items-center gap-1.5 px-1.5">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${status.tone} ${status.pulse ? 'animate-breathe' : ''}`} />
-                <span className="truncate text-[11px] font-semibold text-white/78">{status.label}</span>
-              </div>
-              <span className="shrink-0 text-[10px] font-semibold text-white/44">{capturedAt ? `Saved ${capturedAt}` : 'Tap video to pick'}</span>
-            </div>
-
             {showSavePopup && (
               <div className="mx-auto max-w-4xl animate-rise">
                 <div className="glass-button mx-auto flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-glow">
@@ -968,6 +1122,14 @@ function App() {
                 </div>
               </div>
             )}
+
+            <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 rounded-full border border-white/12 bg-black/24 p-1.5 shadow-glass backdrop-blur-3xl md:hidden">
+              <div className="flex min-w-0 items-center gap-1.5 px-1.5">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${status.tone} ${status.pulse ? 'animate-breathe' : ''}`} />
+                <span className="truncate text-[11px] font-semibold text-white/78">{status.label}</span>
+              </div>
+              <span className="shrink-0 text-[10px] font-semibold text-white/44">{capturedAt ? `Saved ${capturedAt}` : 'Tap video to pick'}</span>
+            </div>
 
             {showExportPopup && (
               <div className="mx-auto max-w-4xl animate-rise">
